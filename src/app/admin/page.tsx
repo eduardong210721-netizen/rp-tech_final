@@ -1,8 +1,15 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import PinLock from '@/components/PinLock';
 import { Product, SaleRecord } from '@/types';
+import {
+  getStoredProducts,
+  saveStoredProducts,
+  getStoredSales,
+  saveStoredSales,
+  DATA_UPDATED_EVENT,
+} from '@/lib/storage';
 
 export default function AdminPage() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
@@ -27,6 +34,54 @@ export default function AdminPage() {
   // Toast state
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  const fetchProducts = useCallback(async () => {
+    // 1. Instant local render (0ms lag)
+    const stored = getStoredProducts();
+    if (stored.length > 0) {
+      setProducts(stored);
+    }
+
+    // 2. Background API sync
+    try {
+      const response = await fetch('/api/inventario');
+      if (response.ok) {
+        const data: Product[] = await response.json();
+        saveStoredProducts(data);
+        setProducts(data);
+      }
+    } catch (error) {
+      console.error('Error loading products:', error);
+    }
+  }, []);
+
+  const fetchSales = useCallback(async () => {
+    // 1. Instant local render (0ms lag)
+    const stored = getStoredSales();
+    if (stored.length > 0) {
+      setSales(stored);
+    }
+
+    // 2. Background API sync
+    try {
+      const response = await fetch('/api/ventas');
+      if (response.ok) {
+        const data: SaleRecord[] = await response.json();
+        saveStoredSales(data);
+        setSales(data);
+      }
+    } catch (error) {
+      console.error('Error loading sales:', error);
+    }
+  }, []);
+
+  const refreshAllData = useCallback(() => {
+    const p = getStoredProducts();
+    if (p.length > 0) setProducts(p);
+
+    const s = getStoredSales();
+    if (s.length > 0) setSales(s);
+  }, []);
+
   useEffect(() => {
     const auth = sessionStorage.getItem('rp_vendor_auth');
     if (auth === 'true') {
@@ -35,31 +90,23 @@ export default function AdminPage() {
       fetchSales();
     }
     setLoading(false);
-  }, []);
 
-  const fetchProducts = async () => {
-    try {
-      const response = await fetch('/api/inventario');
-      if (response.ok) {
-        const data = await response.json();
-        setProducts(data);
-      }
-    } catch (error) {
-      console.error('Error loading products:', error);
-    }
-  };
+    const handleUpdate = () => {
+      refreshAllData();
+    };
 
-  const fetchSales = async () => {
-    try {
-      const response = await fetch('/api/ventas');
-      if (response.ok) {
-        const data = await response.json();
-        setSales(data);
-      }
-    } catch (error) {
-      console.error('Error loading sales:', error);
+    if (typeof window !== 'undefined') {
+      window.addEventListener(DATA_UPDATED_EVENT, handleUpdate);
+      window.addEventListener('storage', handleUpdate);
     }
-  };
+
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener(DATA_UPDATED_EVENT, handleUpdate);
+        window.removeEventListener('storage', handleUpdate);
+      }
+    };
+  }, [fetchProducts, fetchSales, refreshAllData]);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -108,6 +155,17 @@ export default function AdminPage() {
     try {
       const method = isEditingMode ? 'PUT' : 'POST';
 
+      // 1. Instant local update
+      let updatedProducts = [...products];
+      const idx = updatedProducts.findIndex(p => p.id === editingProduct.id || p.sku === editingProduct.sku);
+      if (idx !== -1) {
+        updatedProducts[idx] = { ...editingProduct };
+      } else {
+        updatedProducts.push(editingProduct);
+      }
+      setProducts(updatedProducts);
+      saveStoredProducts(updatedProducts);
+
       const res = await fetch('/api/inventario', {
         method,
         headers: { 'Content-Type': 'application/json' },
@@ -133,6 +191,10 @@ export default function AdminPage() {
   const handleDeleteProduct = async (id: string) => {
     if (!confirm('¿Estás seguro de eliminar este producto?')) return;
 
+    const updated = products.filter(p => p.id !== id && p.sku !== id);
+    setProducts(updated);
+    saveStoredProducts(updated);
+
     try {
       const res = await fetch(`/api/inventario?id=${id}`, { method: 'DELETE' });
       if (res.ok) {
@@ -146,15 +208,17 @@ export default function AdminPage() {
 
   const handleQuickStockChange = async (product: Product, delta: number) => {
     const newStock = Math.max(0, product.stock + delta);
-    const updated = { ...product, stock: newStock };
+    const updatedProduct = { ...product, stock: newStock };
     
-    setProducts(products.map(p => p.id === product.id ? updated : p));
+    const updatedList = products.map(p => p.id === product.id ? updatedProduct : p);
+    setProducts(updatedList);
+    saveStoredProducts(updatedList);
 
     try {
       await fetch('/api/inventario', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updated),
+        body: JSON.stringify(updatedProduct),
       });
       showToast(`Stock de ${product.sku || product.id}: ${newStock}`);
     } catch (err) {
@@ -166,6 +230,10 @@ export default function AdminPage() {
   // Ventas Handlers
   const handleDeleteSale = async (id: string) => {
     if (!confirm('¿Estás seguro de eliminar este registro de venta?')) return;
+
+    const updatedSales = sales.filter(s => s.id !== id);
+    setSales(updatedSales);
+    saveStoredSales(updatedSales);
 
     try {
       const res = await fetch(`/api/ventas?id=${id}`, { method: 'DELETE' });

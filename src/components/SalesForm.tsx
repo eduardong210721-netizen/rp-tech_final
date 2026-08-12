@@ -1,14 +1,18 @@
-'use client';
-
-import { useState, useEffect } from 'react';
-import { Product } from '@/types';
+import { useState, useEffect, useCallback } from 'react';
+import { Product, SaleRecord } from '@/types';
 import UploadButton from '@/components/UploadButton';
+import {
+  getStoredProducts,
+  saveStoredProducts,
+  recordSaleLocally,
+  DATA_UPDATED_EVENT,
+} from '@/lib/storage';
 
 export default function SalesForm() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [message, setMessage] = useState<{type: 'success' | 'error', text: string} | null>(null);
+  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const [formData, setFormData] = useState({
     vendedor: '',
@@ -17,25 +21,54 @@ export default function SalesForm() {
     producto_id: '',
     cantidad: 1,
     metodo_pago: 'Yape',
-    comprobante_url: ''
+    comprobante_url: '',
   });
 
+  const loadProducts = useCallback(async () => {
+    // 1. Instant local render
+    const stored = getStoredProducts();
+    if (stored.length > 0) {
+      setProducts(stored.filter((p: Product) => p.stock > 0));
+      setLoading(false);
+    }
+
+    // 2. Background API sync
+    try {
+      const res = await fetch('/api/inventario');
+      if (res.ok) {
+        const data: Product[] = await res.json();
+        saveStoredProducts(data);
+        setProducts(data.filter((p: Product) => p.stock > 0));
+      }
+    } catch (err) {
+      console.error('Error syncing products API:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
-    const fetchProducts = async () => {
-      try {
-        const res = await fetch('/api/inventario');
-        if (res.ok) {
-          const data = await res.json();
-          setProducts(data.filter((p: Product) => p.stock > 0));
-        }
-      } catch (err) {
-        console.error('Error fetching products:', err);
-      } finally {
-        setLoading(false);
+    loadProducts();
+
+    const handleUpdate = () => {
+      const current = getStoredProducts();
+      if (current.length > 0) {
+        setProducts(current.filter((p: Product) => p.stock > 0));
       }
     };
-    fetchProducts();
-  }, []);
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener(DATA_UPDATED_EVENT, handleUpdate);
+      window.addEventListener('storage', handleUpdate);
+    }
+
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener(DATA_UPDATED_EVENT, handleUpdate);
+        window.removeEventListener('storage', handleUpdate);
+      }
+    };
+  }, [loadProducts]);
 
   const selectedProduct = products.find(p => String(p.id) === formData.producto_id);
   const total = selectedProduct ? selectedProduct.precio * formData.cantidad : 0;
@@ -50,6 +83,24 @@ export default function SalesForm() {
     setSubmitting(true);
     setMessage(null);
 
+    const now = new Date();
+    const tempSale: SaleRecord = {
+      id: `VENTA-${Date.now()}`,
+      fecha: `${now.toLocaleDateString('es-PE')} ${now.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}`,
+      vendedor: formData.vendedor,
+      cliente: formData.cliente,
+      distrito_entrega: formData.distrito_entrega,
+      producto_id: formData.producto_id,
+      producto_nombre: selectedProduct?.producto || '',
+      cantidad: formData.cantidad,
+      total,
+      metodo_pago: formData.metodo_pago,
+      comprobante_url: formData.comprobante_url,
+    };
+
+    // 1. Instant local deduction & state update (0ms UI lag)
+    recordSaleLocally(tempSale);
+
     try {
       const payload = {
         vendedor: formData.vendedor,
@@ -60,13 +111,13 @@ export default function SalesForm() {
         cantidad: formData.cantidad,
         total,
         metodo_pago: formData.metodo_pago,
-        comprobante_url: formData.comprobante_url
+        comprobante_url: formData.comprobante_url,
       };
 
       const res = await fetch('/api/ventas', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
       });
 
       const data = await res.json();
@@ -83,11 +134,12 @@ export default function SalesForm() {
         producto_id: '',
         cantidad: 1,
         metodo_pago: 'Yape',
-        comprobante_url: ''
+        comprobante_url: '',
       });
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Hubo un error al procesar la venta.';
-      setMessage({ type: 'error', text: errorMsg });
+      const errorMsg = err instanceof Error ? err.message : 'Hubo un error al procesar la venta en el servidor.';
+      // Sale is preserved locally regardless
+      setMessage({ type: 'success', text: '¡Venta registrada localmente! (' + errorMsg + ')' });
     } finally {
       setSubmitting(false);
     }

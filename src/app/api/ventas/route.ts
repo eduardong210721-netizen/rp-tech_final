@@ -23,6 +23,7 @@ const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Cache-Control': 'no-store, max-age=0, must-revalidate',
 };
 
 const salesJsonPath = path.join(process.cwd(), 'src', 'data', 'sales.json');
