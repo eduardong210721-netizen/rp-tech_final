@@ -105,6 +105,8 @@ export default function SalesForm() {
 
     try {
       const payload = {
+        id: tempSale.id,
+        fecha: tempSale.fecha,
         vendedor: formData.vendedor,
         cliente: formData.cliente,
         distrito_entrega: formData.distrito_entrega,

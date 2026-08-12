@@ -9,6 +9,8 @@ import path from 'path';
 export const revalidate = 0; // Dynamic API route
 
 interface SalePayload {
+  id?: string;
+  fecha?: string;
   producto_id: string;
   producto_nombre: string;
   cantidad: number;
@@ -91,7 +93,10 @@ export async function GET() {
           }));
 
           for (const s of salesFromSb) {
-            if (!combinedSales.some(existing => existing.id === s.id)) {
+            const idx = combinedSales.findIndex(existing => existing.id === s.id);
+            if (idx !== -1) {
+              combinedSales[idx] = s;
+            } else {
               combinedSales.push(s);
             }
           }
@@ -145,6 +150,8 @@ export async function POST(request: NextRequest) {
     const body: SalePayload = await request.json();
 
     const {
+      id: providedId,
+      fecha: providedFecha,
       producto_id,
       producto_nombre,
       cantidad,
@@ -165,8 +172,8 @@ export async function POST(request: NextRequest) {
 
     const now = new Date();
     const newSale: SaleRecord = {
-      id: `VENTA-${Date.now()}`,
-      fecha: `${now.toLocaleDateString('es-PE')} ${now.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}`,
+      id: providedId || `VENTA-${Date.now()}`,
+      fecha: providedFecha || `${now.toLocaleDateString('es-PE')} ${now.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}`,
       vendedor,
       cliente,
       distrito_entrega,
@@ -178,10 +185,24 @@ export async function POST(request: NextRequest) {
       comprobante_url: comprobante_url || '',
     };
 
-    // 1. GUARANTEED STEP: Save sale locally in memory & sales.json FIRST
+    // 1. GUARANTEED STEP: Save/Update sale locally in memory & sales.json
     const sales = getLocalSales();
-    sales.unshift(newSale); // newest first
+    const existingIndex = sales.findIndex((s) => s.id === newSale.id);
+    if (existingIndex !== -1) {
+      sales[existingIndex] = newSale;
+    } else {
+      sales.unshift(newSale); // newest first
+    }
     saveLocalSales(sales);
+
+    // 2. Push to Supabase with upsert (deduplicated by ID)
+    if (isSupabaseConfigured && supabase) {
+      try {
+        await supabase.from('sales').upsert([newSale], { onConflict: 'id' });
+      } catch (sbErr) {
+        console.warn('Supabase upsert sale error:', sbErr);
+      }
+    }
 
     // 2. Reduce stock in local products inventory
     try {
