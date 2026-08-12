@@ -16,17 +16,52 @@ export default function UploadButton({ onUploadComplete }: UploadButtonProps) {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 5 * 1024 * 1024) {
-      setError('El archivo supera el límite de 5MB');
+    if (file.size > 10 * 1024 * 1024) {
+      setError('El archivo supera el límite de 10MB');
       return;
     }
 
     const reader = new FileReader();
     reader.onload = (event) => {
       const dataUrl = event.target?.result as string;
-      setPreview(dataUrl);
-      onUploadComplete(dataUrl);
-      setError(null);
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+        const maxDim = 800;
+
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.7);
+          setPreview(compressedDataUrl);
+          onUploadComplete(compressedDataUrl);
+          setError(null);
+        } else {
+          setPreview(dataUrl);
+          onUploadComplete(dataUrl);
+          setError(null);
+        }
+      };
+      img.onerror = () => {
+        setPreview(dataUrl);
+        onUploadComplete(dataUrl);
+        setError(null);
+      };
+      img.src = dataUrl;
     };
     reader.onerror = () => {
       setError('Error al leer la imagen seleccionada');

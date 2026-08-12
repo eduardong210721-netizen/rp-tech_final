@@ -66,6 +66,9 @@ export async function OPTIONS() {
 
 export async function GET() {
   try {
+    const localSales = getLocalSales();
+    let combinedSales = [...localSales];
+
     // 1. Try fetching sales from Google Sheets if configured
     if (process.env.GOOGLE_SHEET_ID && process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL) {
       try {
@@ -73,7 +76,7 @@ export async function GET() {
         const rows = await sheet.getRows();
 
         const salesFromSheet: SaleRecord[] = rows.map((row, idx) => ({
-          id: String(row.get('ID') || `VENTA-${idx + 1}`),
+          id: String(row.get('ID') || `VENTA-SHEET-${idx + 1}`),
           fecha: String(row.get('Fecha') || new Date().toLocaleDateString('es-PE')),
           vendedor: String(row.get('Vendedor') || ''),
           cliente: String(row.get('Cliente') || ''),
@@ -86,17 +89,19 @@ export async function GET() {
           comprobante_url: String(row.get('Comprobante_URL') || ''),
         }));
 
-        if (salesFromSheet.length > 0) {
-          memorySalesCache = [...salesFromSheet];
-          return NextResponse.json(salesFromSheet, { headers: corsHeaders });
+        // Merge without duplicates by ID
+        for (const s of salesFromSheet) {
+          if (!combinedSales.some(existing => existing.id === s.id)) {
+            combinedSales.push(s);
+          }
         }
       } catch (sheetErr) {
         console.warn('Google Sheets sales not accessible, returning local sales:', sheetErr);
       }
     }
 
-    const sales = getLocalSales();
-    return NextResponse.json(sales, { headers: corsHeaders });
+    memorySalesCache = [...combinedSales];
+    return NextResponse.json(combinedSales, { headers: corsHeaders });
   } catch (error) {
     console.error('Error fetching sales:', error);
     const sales = getLocalSales();
@@ -127,17 +132,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 1. Try uploading to Google Drive if credentials exist
-    let finalComprobanteUrl = comprobante_url || '';
-    try {
-      const driveRes = await saveSaleToDrive(body);
-      if (driveRes.voucherUrl) {
-        finalComprobanteUrl = driveRes.voucherUrl;
-      }
-    } catch (driveErr) {
-      console.warn('Google Drive not configured, using local image url:', driveErr);
-    }
-
     const now = new Date();
     const newSale: SaleRecord = {
       id: `VENTA-${Date.now()}`,
@@ -150,47 +144,15 @@ export async function POST(request: NextRequest) {
       cantidad: Number(cantidad),
       total: Number(total),
       metodo_pago,
-      comprobante_url: finalComprobanteUrl,
+      comprobante_url: comprobante_url || '',
     };
 
-    // 2. Try Google Sheets sync if configured
-    if (process.env.GOOGLE_SHEET_ID && process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL) {
-      try {
-        const inventorySheet = await getInventorySheet();
-        const salesSheet = await getSalesSheet();
-
-        const rows = await inventorySheet.getRows();
-        const productRow = rows.find(row => String(row.get('ID')) === String(producto_id) || String(row.get('SKU')) === String(producto_id));
-
-        if (productRow) {
-          const currentStock = Number(productRow.get('Stock') || 0);
-          productRow.set('Stock', Math.max(0, currentStock - cantidad));
-          await productRow.save();
-        }
-
-        await salesSheet.addRow({
-          ID: newSale.id,
-          Fecha: newSale.fecha,
-          Vendedor: newSale.vendedor,
-          Cliente: newSale.cliente,
-          Distrito_Entrega: newSale.distrito_entrega,
-          Producto_ID: newSale.producto_id,
-          Producto: newSale.producto_nombre,
-          Cantidad: newSale.cantidad,
-          Total: newSale.total,
-          Metodo_Pago: newSale.metodo_pago,
-          Comprobante_URL: newSale.comprobante_url,
-        });
-      } catch (sheetErr) {
-        console.warn('Google Sheets not accessible, storing sale locally:', sheetErr);
-      }
-    }
-
-    // 3. Save to local sales history & update local product stock
+    // 1. GUARANTEED STEP: Save sale locally in memory & sales.json FIRST
     const sales = getLocalSales();
     sales.unshift(newSale); // newest first
     saveLocalSales(sales);
 
+    // 2. Reduce stock in local products inventory
     try {
       const invRes = await fetch(new URL('/api/inventario', request.url).toString());
       if (invRes.ok) {
@@ -208,6 +170,58 @@ export async function POST(request: NextRequest) {
       }
     } catch (localErr) {
       console.warn('Could not update local product stock:', localErr);
+    }
+
+    // 3. OPTIONAL REMOTE SYNC: Google Drive & Google Sheets (non-blocking)
+    let driveVoucherUrl = '';
+    try {
+      const driveRes = await saveSaleToDrive(body);
+      if (driveRes.voucherUrl) {
+        driveVoucherUrl = driveRes.voucherUrl;
+        newSale.comprobante_url = driveVoucherUrl;
+        // Update local record with drive URL if available
+        saveLocalSales(sales);
+      }
+    } catch (driveErr) {
+      console.warn('Google Drive sync skipped/error:', driveErr);
+    }
+
+    if (process.env.GOOGLE_SHEET_ID && process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL) {
+      try {
+        const inventorySheet = await getInventorySheet();
+        const salesSheet = await getSalesSheet();
+
+        const rows = await inventorySheet.getRows();
+        const productRow = rows.find(row => String(row.get('ID')) === String(producto_id) || String(row.get('SKU')) === String(producto_id));
+
+        if (productRow) {
+          const currentStock = Number(productRow.get('Stock') || 0);
+          productRow.set('Stock', Math.max(0, currentStock - cantidad));
+          await productRow.save();
+        }
+
+        // Safe URL for Google Sheets cell (max 50,000 chars)
+        let sheetVoucherVal = driveVoucherUrl || newSale.comprobante_url;
+        if (sheetVoucherVal.startsWith('data:')) {
+          sheetVoucherVal = '[Comprobante adjuntado en Web]';
+        }
+
+        await salesSheet.addRow({
+          ID: newSale.id,
+          Fecha: newSale.fecha,
+          Vendedor: newSale.vendedor,
+          Cliente: newSale.cliente,
+          Distrito_Entrega: newSale.distrito_entrega,
+          Producto_ID: newSale.producto_id,
+          Producto: newSale.producto_nombre,
+          Cantidad: newSale.cantidad,
+          Total: newSale.total,
+          Metodo_Pago: newSale.metodo_pago,
+          Comprobante_URL: sheetVoucherVal,
+        });
+      } catch (sheetErr) {
+        console.warn('Google Sheets sync skipped/error:', sheetErr);
+      }
     }
 
     return NextResponse.json(
