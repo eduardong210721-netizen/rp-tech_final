@@ -30,3 +30,17 @@ export interface SaleFormData {
   metodo_pago: 'Yape' | 'Plin' | 'Efectivo' | 'Transferencia';
   comprobante_url: string;
 }
+
+export interface SaleRecord {
+  id: string;
+  fecha: string;
+  vendedor: string;
+  cliente: string;
+  distrito_entrega: string;
+  producto_id: string;
+  producto_nombre: string;
+  cantidad: number;
+  total: number;
+  metodo_pago: string;
+  comprobante_url: string;
+}

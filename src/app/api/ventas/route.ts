@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getInventorySheet, getSalesSheet } from '@/lib/sheets';
-import { Product } from '@/types';
+import { Product, SaleRecord } from '@/types';
 import { saveSaleToDrive } from '@/lib/drive';
+import fs from 'fs';
+import path from 'path';
+
+export const revalidate = 0; // Dynamic API route
 
 interface SalePayload {
   producto_id: string;
@@ -17,12 +21,87 @@ interface SalePayload {
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
 
+const salesJsonPath = path.join(process.cwd(), 'src', 'data', 'sales.json');
+
+let memorySalesCache: SaleRecord[] | null = null;
+
+function getLocalSales(): SaleRecord[] {
+  if (memorySalesCache && memorySalesCache.length > 0) {
+    return [...memorySalesCache];
+  }
+  try {
+    if (fs.existsSync(salesJsonPath)) {
+      const data = fs.readFileSync(salesJsonPath, 'utf8');
+      memorySalesCache = JSON.parse(data);
+      return [...(memorySalesCache || [])];
+    }
+  } catch (err) {
+    console.error('Error reading local sales.json:', err);
+  }
+  return [];
+}
+
+function saveLocalSales(sales: SaleRecord[]): boolean {
+  memorySalesCache = [...sales];
+  try {
+    const dir = path.dirname(salesJsonPath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(salesJsonPath, JSON.stringify(sales, null, 2), 'utf8');
+    return true;
+  } catch (err) {
+    console.warn('Could not write to local sales.json (read-only filesystem):', err);
+    return false;
+  }
+}
+
 export async function OPTIONS() {
   return NextResponse.json({}, { headers: corsHeaders });
+}
+
+export async function GET() {
+  try {
+    // 1. Try fetching sales from Google Sheets if configured
+    if (process.env.GOOGLE_SHEET_ID && process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL) {
+      try {
+        const sheet = await getSalesSheet();
+        const rows = await sheet.getRows();
+
+        const salesFromSheet: SaleRecord[] = rows.map((row, idx) => ({
+          id: String(row.get('ID') || `VENTA-${idx + 1}`),
+          fecha: String(row.get('Fecha') || new Date().toLocaleDateString('es-PE')),
+          vendedor: String(row.get('Vendedor') || ''),
+          cliente: String(row.get('Cliente') || ''),
+          distrito_entrega: String(row.get('Distrito_Entrega') || ''),
+          producto_id: String(row.get('Producto_ID') || ''),
+          producto_nombre: String(row.get('Producto') || ''),
+          cantidad: Number(row.get('Cantidad') || 1),
+          total: Number(row.get('Total') || 0),
+          metodo_pago: String(row.get('Metodo_Pago') || 'Yape'),
+          comprobante_url: String(row.get('Comprobante_URL') || ''),
+        }));
+
+        if (salesFromSheet.length > 0) {
+          memorySalesCache = [...salesFromSheet];
+          return NextResponse.json(salesFromSheet, { headers: corsHeaders });
+        }
+      } catch (sheetErr) {
+        console.warn('Google Sheets sales not accessible, returning local sales:', sheetErr);
+      }
+    }
+
+    const sales = getLocalSales();
+    return NextResponse.json(sales, { headers: corsHeaders });
+  } catch (error) {
+    console.error('Error fetching sales:', error);
+    const sales = getLocalSales();
+    return NextResponse.json(sales, { headers: corsHeaders });
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -43,12 +122,12 @@ export async function POST(request: NextRequest) {
 
     if (!producto_id || !cantidad || !total || !vendedor || !cliente || !distrito_entrega || !metodo_pago) {
       return NextResponse.json(
-        { error: 'Missing required fields' },
+        { error: 'Todos los campos requeridos deben estar completos' },
         { status: 400, headers: corsHeaders }
       );
     }
 
-    // 1. Upload voucher & text file to Google Drive (Pagos / [Vendedor] / ...)
+    // 1. Try uploading to Google Drive if credentials exist
     let finalComprobanteUrl = comprobante_url || '';
     try {
       const driveRes = await saveSaleToDrive(body);
@@ -56,8 +135,23 @@ export async function POST(request: NextRequest) {
         finalComprobanteUrl = driveRes.voucherUrl;
       }
     } catch (driveErr) {
-      console.warn('Error saving sale to Google Drive:', driveErr);
+      console.warn('Google Drive not configured, using local image url:', driveErr);
     }
+
+    const now = new Date();
+    const newSale: SaleRecord = {
+      id: `VENTA-${Date.now()}`,
+      fecha: `${now.toLocaleDateString('es-PE')} ${now.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}`,
+      vendedor,
+      cliente,
+      distrito_entrega,
+      producto_id,
+      producto_nombre,
+      cantidad: Number(cantidad),
+      total: Number(total),
+      metodo_pago,
+      comprobante_url: finalComprobanteUrl,
+    };
 
     // 2. Try Google Sheets sync if configured
     if (process.env.GOOGLE_SHEET_ID && process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL) {
@@ -70,40 +164,34 @@ export async function POST(request: NextRequest) {
 
         if (productRow) {
           const currentStock = Number(productRow.get('Stock') || 0);
-          if (currentStock < cantidad) {
-            return NextResponse.json(
-              { error: 'Stock insuficiente para procesar la venta' },
-              { status: 400, headers: corsHeaders }
-            );
-          }
           productRow.set('Stock', Math.max(0, currentStock - cantidad));
           await productRow.save();
         }
 
         await salesSheet.addRow({
-          Fecha: new Date().toLocaleDateString('es-PE'),
-          Vendedor: vendedor,
-          Cliente: cliente,
-          Distrito_Entrega: distrito_entrega,
-          Producto: producto_nombre,
-          Cantidad: cantidad,
-          Total: total,
-          Metodo_Pago: metodo_pago,
-          Comprobante_URL: finalComprobanteUrl,
+          ID: newSale.id,
+          Fecha: newSale.fecha,
+          Vendedor: newSale.vendedor,
+          Cliente: newSale.cliente,
+          Distrito_Entrega: newSale.distrito_entrega,
+          Producto_ID: newSale.producto_id,
+          Producto: newSale.producto_nombre,
+          Cantidad: newSale.cantidad,
+          Total: newSale.total,
+          Metodo_Pago: newSale.metodo_pago,
+          Comprobante_URL: newSale.comprobante_url,
         });
-
-        return NextResponse.json(
-          { success: true, message: 'Venta registrada con éxito en Google Sheets' },
-          { status: 201, headers: corsHeaders }
-        );
       } catch (sheetErr) {
-        console.warn('Google Sheets no disponible, usando fallback local para venta:', sheetErr);
+        console.warn('Google Sheets not accessible, storing sale locally:', sheetErr);
       }
     }
 
-    // Local / In-Memory Fallback
+    // 3. Save to local sales history & update local product stock
+    const sales = getLocalSales();
+    sales.unshift(newSale); // newest first
+    saveLocalSales(sales);
+
     try {
-      // Fetch products via local API endpoint logic
       const invRes = await fetch(new URL('/api/inventario', request.url).toString());
       if (invRes.ok) {
         const products: Product[] = await invRes.json();
@@ -114,7 +202,7 @@ export async function POST(request: NextRequest) {
           await fetch(new URL('/api/inventario', request.url).toString(), {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ...product, stock: newStock })
+            body: JSON.stringify({ ...product, stock: newStock }),
           });
         }
       }
@@ -123,7 +211,7 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json(
-      { success: true, message: 'Venta registrada correctamente' },
+      { success: true, message: 'Venta registrada exitosamente', sale: newSale },
       { status: 201, headers: corsHeaders }
     );
   } catch (error) {
@@ -132,5 +220,25 @@ export async function POST(request: NextRequest) {
       { error: 'Failed to process sale' },
       { status: 500, headers: corsHeaders }
     );
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+
+    if (!id) {
+      return NextResponse.json({ error: 'ID is required' }, { status: 400, headers: corsHeaders });
+    }
+
+    let sales = getLocalSales();
+    sales = sales.filter((s) => s.id !== id);
+    saveLocalSales(sales);
+
+    return NextResponse.json({ success: true }, { headers: corsHeaders });
+  } catch (error) {
+    console.error('Error deleting sale:', error);
+    return NextResponse.json({ error: 'Failed to delete sale' }, { status: 500, headers: corsHeaders });
   }
 }
