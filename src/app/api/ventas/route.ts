@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getInventorySheet, getSalesSheet } from '@/lib/sheets';
 import { Product } from '@/types';
+import { saveSaleToDrive } from '@/lib/drive';
 
 interface SalePayload {
   producto_id: string;
@@ -47,7 +48,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Try Google Sheets sync if configured
+    // 1. Upload voucher & text file to Google Drive (Pagos / [Vendedor] / ...)
+    let finalComprobanteUrl = comprobante_url || '';
+    try {
+      const driveRes = await saveSaleToDrive(body);
+      if (driveRes.voucherUrl) {
+        finalComprobanteUrl = driveRes.voucherUrl;
+      }
+    } catch (driveErr) {
+      console.warn('Error saving sale to Google Drive:', driveErr);
+    }
+
+    // 2. Try Google Sheets sync if configured
     if (process.env.GOOGLE_SHEET_ID && process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL) {
       try {
         const inventorySheet = await getInventorySheet();
@@ -77,7 +89,7 @@ export async function POST(request: NextRequest) {
           Cantidad: cantidad,
           Total: total,
           Metodo_Pago: metodo_pago,
-          Comprobante_URL: comprobante_url || '',
+          Comprobante_URL: finalComprobanteUrl,
         });
 
         return NextResponse.json(
