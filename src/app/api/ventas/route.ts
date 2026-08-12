@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getInventorySheet, getSalesSheet } from '@/lib/sheets';
+import { Product } from '@/types';
 
 interface SalePayload {
   producto_id: string;
@@ -93,8 +94,8 @@ export async function POST(request: NextRequest) {
       // Fetch products via local API endpoint logic
       const invRes = await fetch(new URL('/api/inventario', request.url).toString());
       if (invRes.ok) {
-        const products = await invRes.json();
-        const product = products.find((p: any) => String(p.id) === String(producto_id) || String(p.sku) === String(producto_id));
+        const products: Product[] = await invRes.json();
+        const product = products.find((p: Product) => String(p.id) === String(producto_id) || String(p.sku) === String(producto_id));
 
         if (product) {
           const newStock = Math.max(0, product.stock - cantidad);
