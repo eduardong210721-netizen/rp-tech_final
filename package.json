@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@google/genai": "^2.16.0",
     "@supabase/supabase-js": "^2.112.3",
     "@uploadthing/react": "^7.3.3",
     "google-auth-library": "^11.0.1",
