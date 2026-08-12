@@ -1,5 +1,4 @@
 import { google, drive_v3 } from 'googleapis';
-import { JWT } from 'google-auth-library';
 import { Readable } from 'stream';
 
 export interface SaleDriveData {
@@ -22,7 +21,7 @@ function getDriveClient() {
     return null;
   }
 
-  const auth = new JWT({
+  const auth = new google.auth.JWT({
     email,
     key: privateKey,
     scopes: [
@@ -31,7 +30,8 @@ function getDriveClient() {
     ],
   });
 
-  return google.drive({ version: 'v3', auth });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return google.drive({ version: 'v3', auth: auth as any });
 }
 
 async function getOrCreateFolder(
