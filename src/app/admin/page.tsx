@@ -8,6 +8,7 @@ import {
   saveStoredProducts,
   getStoredSales,
   saveStoredSales,
+  initSupabaseRealtimeSync,
   DATA_UPDATED_EVENT,
 } from '@/lib/storage';
 
@@ -83,6 +84,7 @@ export default function AdminPage() {
   }, []);
 
   useEffect(() => {
+    initSupabaseRealtimeSync();
     const auth = sessionStorage.getItem('rp_vendor_auth');
     if (auth === 'true') {
       setIsAuthenticated(true);

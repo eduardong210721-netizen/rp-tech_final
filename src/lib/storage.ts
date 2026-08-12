@@ -1,4 +1,5 @@
 import { Product, SaleRecord } from '@/types';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
 const PRODUCTS_STORAGE_KEY = 'rp_products_cache';
 const SALES_STORAGE_KEY = 'rp_sales_cache';
@@ -9,6 +10,82 @@ function notifyDataUpdated() {
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new Event(DATA_UPDATED_EVENT));
   }
+}
+
+// ----------------------------------------------------
+// REALTIME WEBSOCKETS LISTENER (SUPABASE)
+// ----------------------------------------------------
+
+let realtimeInitialized = false;
+
+export function initSupabaseRealtimeSync() {
+  if (!isSupabaseConfigured || !supabase || realtimeInitialized || typeof window === 'undefined') return;
+
+  realtimeInitialized = true;
+
+  // Listen to Products changes in Realtime WebSockets
+  supabase
+    .channel('realtime_products_channel')
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'products' },
+      async (payload) => {
+        console.log('⚡ Supabase Realtime Product Event:', payload);
+        const { eventType, new: newRow, old: oldRow } = payload;
+        const currentProducts = getStoredProducts();
+
+        if (eventType === 'INSERT' && newRow) {
+          const product: Product = newRow as Product;
+          if (!currentProducts.some(p => p.id === product.id)) {
+            currentProducts.push(product);
+          }
+        } else if (eventType === 'UPDATE' && newRow) {
+          const updated: Product = newRow as Product;
+          const idx = currentProducts.findIndex(p => p.id === updated.id);
+          if (idx !== -1) {
+            currentProducts[idx] = updated;
+          } else {
+            currentProducts.push(updated);
+          }
+        } else if (eventType === 'DELETE' && oldRow) {
+          const deletedId = (oldRow as { id: string }).id;
+          const filtered = currentProducts.filter(p => p.id !== deletedId);
+          saveStoredProducts(filtered);
+          return;
+        }
+
+        saveStoredProducts(currentProducts);
+      }
+    )
+    .subscribe();
+
+  // Listen to Sales changes in Realtime WebSockets
+  supabase
+    .channel('realtime_sales_channel')
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'sales' },
+      async (payload) => {
+        console.log('⚡ Supabase Realtime Sale Event:', payload);
+        const { eventType, new: newRow, old: oldRow } = payload;
+        const currentSales = getStoredSales();
+
+        if (eventType === 'INSERT' && newRow) {
+          const sale: SaleRecord = newRow as SaleRecord;
+          if (!currentSales.some(s => s.id === sale.id)) {
+            currentSales.unshift(sale);
+          }
+        } else if (eventType === 'DELETE' && oldRow) {
+          const deletedId = (oldRow as { id: string }).id;
+          const filtered = currentSales.filter(s => s.id !== deletedId);
+          saveStoredSales(filtered);
+          return;
+        }
+
+        saveStoredSales(currentSales);
+      }
+    )
+    .subscribe();
 }
 
 // ----------------------------------------------------
@@ -72,7 +149,6 @@ export function saveStoredSales(sales: SaleRecord[]): void {
 export function recordSaleLocally(newSale: SaleRecord): void {
   // 1. Add sale to sales history
   const currentSales = getStoredSales();
-  // Avoid duplicate by ID
   const exists = currentSales.some(s => s.id === newSale.id);
   if (!exists) {
     currentSales.unshift(newSale);
@@ -88,5 +164,25 @@ export function recordSaleLocally(newSale: SaleRecord): void {
   if (targetProduct) {
     targetProduct.stock = Math.max(0, targetProduct.stock - newSale.cantidad);
     saveStoredProducts(currentProducts);
+  }
+
+  // 3. Supabase Direct Async Push (if configured)
+  if (isSupabaseConfigured && supabase) {
+    supabase
+      .from('sales')
+      .insert([newSale])
+      .then(({ error }) => {
+        if (error) console.warn('Supabase sale insert error:', error.message);
+      });
+
+    if (targetProduct) {
+      supabase
+        .from('products')
+        .update({ stock: targetProduct.stock })
+        .eq('id', targetProduct.id)
+        .then(({ error }) => {
+          if (error) console.warn('Supabase stock update error:', error.message);
+        });
+    }
   }
 }

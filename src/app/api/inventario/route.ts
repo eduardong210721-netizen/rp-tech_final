@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getInventorySheet } from '@/lib/sheets';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import fs from 'fs';
 import path from 'path';
 import { Product } from '@/types';
@@ -54,7 +55,30 @@ export async function OPTIONS() {
 
 export async function GET() {
   try {
-    // Attempt to load from Google Sheets first if configured
+    // 1. Supabase database check
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { data, error } = await supabase.from('products').select('*').order('created_at', { ascending: true });
+        if (!error && data && data.length > 0) {
+          const productsFromSupabase: Product[] = data.map((p) => ({
+            id: String(p.id),
+            sku: String(p.sku || p.id),
+            producto: String(p.producto),
+            precio: Number(p.precio),
+            costo: Number(p.costo || 0),
+            stock: Number(p.stock),
+            imagen_url: String(p.imagen_url || '/logo.jpg'),
+            categoria: String(p.categoria || 'GENERAL'),
+          }));
+          memoryProductsCache = [...productsFromSupabase];
+          return NextResponse.json(productsFromSupabase, { headers: corsHeaders });
+        }
+      } catch (sbErr) {
+        console.warn('Supabase fetch error, falling back:', sbErr);
+      }
+    }
+
+    // 2. Google Sheets fallback
     if (process.env.GOOGLE_SHEET_ID && process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL) {
       try {
         const sheet = await getInventorySheet();

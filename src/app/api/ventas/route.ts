@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getInventorySheet, getSalesSheet } from '@/lib/sheets';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { Product, SaleRecord } from '@/types';
 import { saveSaleToDrive } from '@/lib/drive';
 import fs from 'fs';
@@ -70,7 +71,37 @@ export async function GET() {
     const localSales = getLocalSales();
     const combinedSales = [...localSales];
 
-    // 1. Try fetching sales from Google Sheets if configured
+    // 1. Try Supabase database if configured
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { data, error } = await supabase.from('sales').select('*').order('created_at', { ascending: false });
+        if (!error && data && data.length > 0) {
+          const salesFromSb: SaleRecord[] = data.map(s => ({
+            id: String(s.id),
+            fecha: String(s.fecha),
+            vendedor: String(s.vendedor),
+            cliente: String(s.cliente),
+            distrito_entrega: String(s.distrito_entrega),
+            producto_id: String(s.producto_id),
+            producto_nombre: String(s.producto_nombre),
+            cantidad: Number(s.cantidad),
+            total: Number(s.total),
+            metodo_pago: String(s.metodo_pago),
+            comprobante_url: String(s.comprobante_url || ''),
+          }));
+
+          for (const s of salesFromSb) {
+            if (!combinedSales.some(existing => existing.id === s.id)) {
+              combinedSales.push(s);
+            }
+          }
+        }
+      } catch (sbErr) {
+        console.warn('Supabase sales fetch error:', sbErr);
+      }
+    }
+
+    // 2. Try fetching sales from Google Sheets if configured
     if (process.env.GOOGLE_SHEET_ID && process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL) {
       try {
         const sheet = await getSalesSheet();
@@ -90,7 +121,6 @@ export async function GET() {
           comprobante_url: String(row.get('Comprobante_URL') || ''),
         }));
 
-        // Merge without duplicates by ID
         for (const s of salesFromSheet) {
           if (!combinedSales.some(existing => existing.id === s.id)) {
             combinedSales.push(s);

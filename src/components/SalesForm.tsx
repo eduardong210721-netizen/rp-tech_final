@@ -5,6 +5,7 @@ import {
   getStoredProducts,
   saveStoredProducts,
   recordSaleLocally,
+  initSupabaseRealtimeSync,
   DATA_UPDATED_EVENT,
 } from '@/lib/storage';
 
@@ -48,6 +49,7 @@ export default function SalesForm() {
   }, []);
 
   useEffect(() => {
+    initSupabaseRealtimeSync();
     loadProducts();
 
     const handleUpdate = () => {
