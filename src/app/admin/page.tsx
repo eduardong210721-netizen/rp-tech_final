@@ -156,7 +156,7 @@ export default function AdminPage() {
       const method = isEditingMode ? 'PUT' : 'POST';
 
       // 1. Instant local update
-      let updatedProducts = [...products];
+      const updatedProducts = [...products];
       const idx = updatedProducts.findIndex(p => p.id === editingProduct.id || p.sku === editingProduct.sku);
       if (idx !== -1) {
         updatedProducts[idx] = { ...editingProduct };
