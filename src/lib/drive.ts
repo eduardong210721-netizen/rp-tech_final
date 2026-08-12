@@ -39,19 +39,30 @@ async function getOrCreateFolder(
   folderName: string,
   parentId?: string
 ): Promise<string> {
+  // If no parentId provided and GOOGLE_DRIVE_FOLDER_ID is set in env, use it as root parent
+  if (!parentId && process.env.GOOGLE_DRIVE_FOLDER_ID) {
+    return process.env.GOOGLE_DRIVE_FOLDER_ID;
+  }
+
   let query = `mimeType='application/vnd.google-apps.folder' and name='${folderName}' and trashed=false`;
   if (parentId) {
     query += ` and '${parentId}' in parents`;
   }
 
-  const res = await drive.files.list({
-    q: query,
-    fields: 'files(id, name)',
-    spaces: 'drive',
-  });
+  try {
+    const res = await drive.files.list({
+      q: query,
+      fields: 'files(id, name)',
+      spaces: 'drive',
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+    });
 
-  if (res.data.files && res.data.files.length > 0 && res.data.files[0].id) {
-    return res.data.files[0].id;
+    if (res.data.files && res.data.files.length > 0 && res.data.files[0].id) {
+      return res.data.files[0].id;
+    }
+  } catch (err) {
+    console.warn('Error querying Google Drive folder:', err);
   }
 
   const folderMetadata: any = {
@@ -65,6 +76,7 @@ async function getOrCreateFolder(
   const newFolder = await drive.files.create({
     requestBody: folderMetadata,
     fields: 'id',
+    supportsAllDrives: true,
   });
 
   return newFolder.data.id!;
@@ -83,7 +95,7 @@ export async function saveSaleToDrive(data: SaleDriveData): Promise<{ voucherUrl
     // 1. Get or create root "Pagos" folder
     const pagosFolderId = await getOrCreateFolder(drive, 'Pagos');
 
-    // Share "Pagos" folder with owner email if needed
+    // Share "Pagos" folder with owner email so it appears in "Compartidos conmigo" or owner's drive
     try {
       await drive.permissions.create({
         fileId: pagosFolderId,
@@ -92,6 +104,7 @@ export async function saveSaleToDrive(data: SaleDriveData): Promise<{ voucherUrl
           type: 'user',
           emailAddress: ownerEmail,
         },
+        sendNotificationEmail: false,
       });
     } catch (permErr) {
       // Permission might already exist
@@ -100,6 +113,21 @@ export async function saveSaleToDrive(data: SaleDriveData): Promise<{ voucherUrl
     // 2. Get or create Vendor subfolder
     const vendorFolderName = (data.vendedor || 'General').trim();
     const vendorFolderId = await getOrCreateFolder(drive, vendorFolderName, pagosFolderId);
+
+    // Share vendor subfolder with owner
+    try {
+      await drive.permissions.create({
+        fileId: vendorFolderId,
+        requestBody: {
+          role: 'writer',
+          type: 'user',
+          emailAddress: ownerEmail,
+        },
+        sendNotificationEmail: false,
+      });
+    } catch (e) {
+      // ignore
+    }
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const safeClient = (data.cliente || 'Cliente').replace(/[^a-zA-Z0-9]/g, '_');
@@ -126,13 +154,14 @@ export async function saveSaleToDrive(data: SaleDriveData): Promise<{ voucherUrl
             body: Readable.from(buffer),
           },
           fields: 'id, webViewLink',
+          supportsAllDrives: true,
         });
 
         if (imageRes.data.webViewLink) {
           voucherUrl = imageRes.data.webViewLink;
         }
 
-        // Grant permission to owner
+        // Grant permission to owner and public read
         if (imageRes.data.id) {
           try {
             await drive.permissions.create({
@@ -175,7 +204,19 @@ Link de Comprobante: ${voucherUrl || 'Sin comprobante adjunto'}
         body: Readable.from(txtBuffer),
       },
       fields: 'id, webViewLink',
+      supportsAllDrives: true,
     });
+
+    if (txtRes.data.id) {
+      try {
+        await drive.permissions.create({
+          fileId: txtRes.data.id,
+          requestBody: { role: 'reader', type: 'anyone' },
+        });
+      } catch (e) {
+        // ignore
+      }
+    }
 
     const txtUrl = txtRes.data.webViewLink || undefined;
 
