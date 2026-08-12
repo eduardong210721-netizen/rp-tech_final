@@ -51,6 +51,8 @@ export default function AdminPage() {
     setIsAuthenticated(false);
   };
 
+  const [isEditingMode, setIsEditingMode] = useState(false);
+
   const handleOpenAddModal = () => {
     const nextSku = `260${(products.length + 1).toString().padStart(2, '0')}`;
     setEditingProduct({
@@ -63,11 +65,13 @@ export default function AdminPage() {
       imagen_url: '/logo.jpg',
       categoria: 'GENERAL'
     });
+    setIsEditingMode(false);
     setIsModalOpen(true);
   };
 
   const handleOpenEditModal = (product: Product) => {
     setEditingProduct({ ...product });
+    setIsEditingMode(true);
     setIsModalOpen(true);
   };
 
@@ -77,8 +81,7 @@ export default function AdminPage() {
 
     setSaving(true);
     try {
-      const isNew = !products.some(p => p.id === editingProduct.id);
-      const method = isNew ? 'POST' : 'PUT';
+      const method = isEditingMode ? 'PUT' : 'POST';
 
       const res = await fetch('/api/inventario', {
         method,
@@ -87,15 +90,16 @@ export default function AdminPage() {
       });
 
       if (res.ok) {
-        showToast(isNew ? '✨ Producto creado con éxito' : '✅ Producto actualizado');
+        showToast(isEditingMode ? '✅ Cambios confirmados y guardados' : '✨ Producto creado con éxito');
         setIsModalOpen(false);
         fetchProducts();
       } else {
-        alert('Error al guardar el producto');
+        const data = await res.json().catch(() => ({}));
+        alert(`Error al guardar: ${data.error || 'No se pudo guardar el producto'}`);
       }
     } catch (err) {
       console.error(err);
-      alert('Error de conexión');
+      alert('Error de conexión con el servidor');
     } finally {
       setSaving(false);
     }
@@ -394,7 +398,7 @@ export default function AdminPage() {
           <div className="bg-white rounded-3xl p-6 md:p-8 w-full max-w-lg shadow-2xl animate-[fadeIn_0.2s_ease-out]">
             <div className="flex justify-between items-center mb-6 border-b pb-4">
               <h3 className="text-xl font-bold text-[#023e55]">
-                {products.some(p => p.id === editingProduct.id) ? '✏️ Editar Producto' : '✨ Nuevo Producto'}
+                {isEditingMode ? '✏️ Editar Producto' : '✨ Nuevo Producto'}
               </h3>
               <button
                 onClick={() => setIsModalOpen(false)}
@@ -412,7 +416,7 @@ export default function AdminPage() {
                     type="text"
                     required
                     value={editingProduct.sku || ''}
-                    onChange={(e) => setEditingProduct({ ...editingProduct, sku: e.target.value, id: e.target.value })}
+                    onChange={(e) => setEditingProduct({ ...editingProduct, sku: e.target.value, id: editingProduct.id || e.target.value })}
                     className="w-full p-2.5 border border-gray-200 rounded-xl text-sm font-mono focus:ring-2 focus:ring-[#2ba5b2] outline-none"
                     placeholder="26001"
                   />
@@ -496,7 +500,7 @@ export default function AdminPage() {
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="w-1/2 py-3 border border-gray-200 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-50"
+                  className="w-1/2 py-3 border border-gray-200 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
                 >
                   Cancelar
                 </button>
@@ -505,7 +509,23 @@ export default function AdminPage() {
                   disabled={saving}
                   className="w-1/2 py-3 bg-[#2ba5b2] hover:bg-[#20838e] text-white rounded-xl text-sm font-bold shadow-md transition-all flex items-center justify-center gap-2"
                 >
-                  {saving ? 'Guardando...' : 'Guardar Producto'}
+                  {saving ? (
+                    'Guardando...'
+                  ) : isEditingMode ? (
+                    <>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
+                      </svg>
+                      Confirmar los Cambios
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path>
+                      </svg>
+                      Confirmar y Crear
+                    </>
+                  )}
                 </button>
               </div>
             </form>
