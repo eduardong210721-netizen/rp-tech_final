@@ -67,7 +67,7 @@ export async function OPTIONS() {
 export async function GET() {
   try {
     const localSales = getLocalSales();
-    let combinedSales = [...localSales];
+    const combinedSales = [...localSales];
 
     // 1. Try fetching sales from Google Sheets if configured
     if (process.env.GOOGLE_SHEET_ID && process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL) {
