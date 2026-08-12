@@ -109,13 +109,13 @@ export async function POST(req: Request) {
         const sheet = await getInventorySheet();
         await sheet.addRow({
           ID: newProduct.id,
-          SKU: newProduct.sku,
+          SKU: newProduct.sku || newProduct.id,
           Producto: newProduct.producto,
           Precio: newProduct.precio,
-          Costo: newProduct.costo,
+          Costo: newProduct.costo || 0,
           Stock: newProduct.stock,
           Imagen_URL: newProduct.imagen_url,
-          Categoría: newProduct.categoria,
+          Categoría: newProduct.categoria || 'GENERAL',
         });
       } catch (sheetErr) {
         console.warn('Failed to add row to Google Sheets:', sheetErr);
@@ -166,25 +166,25 @@ export async function PUT(req: Request) {
         );
 
         if (targetRow) {
-          targetRow.set('SKU', updatedProduct.sku);
+          targetRow.set('SKU', updatedProduct.sku || updatedProduct.id);
           targetRow.set('Producto', updatedProduct.producto);
           targetRow.set('Precio', updatedProduct.precio);
-          targetRow.set('Costo', updatedProduct.costo);
+          targetRow.set('Costo', updatedProduct.costo || 0);
           targetRow.set('Stock', updatedProduct.stock);
           targetRow.set('Imagen_URL', updatedProduct.imagen_url);
-          targetRow.set('Categoría', updatedProduct.categoria);
+          targetRow.set('Categoría', updatedProduct.categoria || 'GENERAL');
           await targetRow.save();
         } else {
           // If row not found in sheet, append it
           await sheet.addRow({
             ID: updatedProduct.id,
-            SKU: updatedProduct.sku,
+            SKU: updatedProduct.sku || updatedProduct.id,
             Producto: updatedProduct.producto,
             Precio: updatedProduct.precio,
-            Costo: updatedProduct.costo,
+            Costo: updatedProduct.costo || 0,
             Stock: updatedProduct.stock,
             Imagen_URL: updatedProduct.imagen_url,
-            Categoría: updatedProduct.categoria,
+            Categoría: updatedProduct.categoria || 'GENERAL',
           });
         }
       } catch (sheetErr) {
