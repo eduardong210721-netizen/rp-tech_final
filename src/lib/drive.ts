@@ -1,4 +1,4 @@
-import { google } from 'googleapis';
+import { google, drive_v3 } from 'googleapis';
 import { JWT } from 'google-auth-library';
 import { Readable } from 'stream';
 
@@ -65,7 +65,7 @@ async function getOrCreateFolder(
     console.warn('Error querying Google Drive folder:', err);
   }
 
-  const folderMetadata: any = {
+  const folderMetadata: drive_v3.Schema$File = {
     name: folderName,
     mimeType: 'application/vnd.google-apps.folder',
   };
@@ -106,7 +106,7 @@ export async function saveSaleToDrive(data: SaleDriveData): Promise<{ voucherUrl
         },
         sendNotificationEmail: false,
       });
-    } catch (permErr) {
+    } catch {
       // Permission might already exist
     }
 
@@ -125,7 +125,7 @@ export async function saveSaleToDrive(data: SaleDriveData): Promise<{ voucherUrl
         },
         sendNotificationEmail: false,
       });
-    } catch (e) {
+    } catch {
       // ignore
     }
 
@@ -168,7 +168,7 @@ export async function saveSaleToDrive(data: SaleDriveData): Promise<{ voucherUrl
               fileId: imageRes.data.id,
               requestBody: { role: 'reader', type: 'anyone' },
             });
-          } catch (e) {
+          } catch {
             // ignore
           }
         }
@@ -213,7 +213,7 @@ Link de Comprobante: ${voucherUrl || 'Sin comprobante adjunto'}
           fileId: txtRes.data.id,
           requestBody: { role: 'reader', type: 'anyone' },
         });
-      } catch (e) {
+      } catch {
         // ignore
       }
     }
