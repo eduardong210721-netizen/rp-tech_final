@@ -302,6 +302,14 @@ export async function DELETE(request: NextRequest) {
     sales = sales.filter((s) => s.id !== id);
     saveLocalSales(sales);
 
+    if (isSupabaseConfigured && supabase) {
+      try {
+        await supabase.from('sales').delete().eq('id', id);
+      } catch (sbErr) {
+        console.warn('Supabase sale delete error:', sbErr);
+      }
+    }
+
     return NextResponse.json({ success: true }, { headers: corsHeaders });
   } catch (error) {
     console.error('Error deleting sale:', error);

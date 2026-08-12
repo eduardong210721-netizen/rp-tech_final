@@ -186,3 +186,19 @@ export function recordSaleLocally(newSale: SaleRecord): void {
     }
   }
 }
+
+export function deleteSaleLocally(id: string): void {
+  const currentSales = getStoredSales();
+  const filtered = currentSales.filter(s => s.id !== id);
+  saveStoredSales(filtered);
+
+  if (isSupabaseConfigured && supabase) {
+    supabase
+      .from('sales')
+      .delete()
+      .eq('id', id)
+      .then(({ error }) => {
+        if (error) console.warn('Supabase delete sale error:', error.message);
+      });
+  }
+}

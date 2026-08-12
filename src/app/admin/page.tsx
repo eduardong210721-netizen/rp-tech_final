@@ -8,6 +8,7 @@ import {
   saveStoredProducts,
   getStoredSales,
   saveStoredSales,
+  deleteSaleLocally,
   initSupabaseRealtimeSync,
   DATA_UPDATED_EVENT,
 } from '@/lib/storage';
@@ -233,9 +234,9 @@ export default function AdminPage() {
   const handleDeleteSale = async (id: string) => {
     if (!confirm('¿Estás seguro de eliminar este registro de venta?')) return;
 
+    deleteSaleLocally(id);
     const updatedSales = sales.filter(s => s.id !== id);
     setSales(updatedSales);
-    saveStoredSales(updatedSales);
 
     try {
       const res = await fetch(`/api/ventas?id=${id}`, { method: 'DELETE' });
