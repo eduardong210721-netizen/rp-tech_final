@@ -128,7 +128,33 @@ export async function POST(req: Request) {
       categoria: String(body.categoria || 'GENERAL'),
     };
 
-    // 1. Google Sheets sync
+    // 1. Supabase sync
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { error } = await supabase.from('products').upsert(
+          [
+            {
+              id: newProduct.id,
+              sku: newProduct.sku || newProduct.id,
+              producto: newProduct.producto,
+              precio: newProduct.precio,
+              costo: newProduct.costo || 0,
+              stock: newProduct.stock,
+              imagen_url: newProduct.imagen_url,
+              categoria: newProduct.categoria || 'GENERAL',
+            },
+          ],
+          { onConflict: 'id' }
+        );
+        if (error) {
+          console.warn('Failed to upsert product in Supabase:', error.message);
+        }
+      } catch (sbErr) {
+        console.warn('Error syncing product to Supabase:', sbErr);
+      }
+    }
+
+    // 2. Google Sheets sync
     if (process.env.GOOGLE_SHEET_ID && process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL) {
       try {
         const sheet = await getInventorySheet();
@@ -147,7 +173,7 @@ export async function POST(req: Request) {
       }
     }
 
-    // 2. Local memory & json sync
+    // 3. Local memory & json sync
     const products = getLocalProducts();
     // Prevent duplicate ID in local array
     const existingIndex = products.findIndex((p) => p.id === newProduct.id || p.sku === newProduct.sku);
@@ -181,7 +207,33 @@ export async function PUT(req: Request) {
       categoria: String(body.categoria || 'GENERAL'),
     };
 
-    // 1. Google Sheets sync
+    // 1. Supabase sync
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { error } = await supabase.from('products').upsert(
+          [
+            {
+              id: updatedProduct.id,
+              sku: updatedProduct.sku || updatedProduct.id,
+              producto: updatedProduct.producto,
+              precio: updatedProduct.precio,
+              costo: updatedProduct.costo || 0,
+              stock: updatedProduct.stock,
+              imagen_url: updatedProduct.imagen_url,
+              categoria: updatedProduct.categoria || 'GENERAL',
+            },
+          ],
+          { onConflict: 'id' }
+        );
+        if (error) {
+          console.warn('Failed to update product in Supabase:', error.message);
+        }
+      } catch (sbErr) {
+        console.warn('Error updating product in Supabase:', sbErr);
+      }
+    }
+
+    // 2. Google Sheets sync
     if (process.env.GOOGLE_SHEET_ID && process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL) {
       try {
         const sheet = await getInventorySheet();
@@ -217,7 +269,7 @@ export async function PUT(req: Request) {
       }
     }
 
-    // 2. Local memory & json sync
+    // 3. Local memory & json sync
     const products = getLocalProducts();
     const index = products.findIndex((p) => p.id === targetId || p.sku === body.sku || p.id === body.sku);
 
@@ -244,7 +296,19 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: 'ID is required' }, { status: 400, headers: corsHeaders });
     }
 
-    // 1. Google Sheets sync
+    // 1. Supabase sync
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { error } = await supabase.from('products').delete().eq('id', id);
+        if (error) {
+          console.warn('Failed to delete product from Supabase:', error.message);
+        }
+      } catch (sbErr) {
+        console.warn('Error deleting product from Supabase:', sbErr);
+      }
+    }
+
+    // 2. Google Sheets sync
     if (process.env.GOOGLE_SHEET_ID && process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL) {
       try {
         const sheet = await getInventorySheet();
@@ -258,7 +322,7 @@ export async function DELETE(req: Request) {
       }
     }
 
-    // 2. Local memory & json sync
+    // 3. Local memory & json sync
     let products = getLocalProducts();
     products = products.filter((p) => String(p.id) !== String(id) && String(p.sku) !== String(id));
     saveLocalProducts(products);

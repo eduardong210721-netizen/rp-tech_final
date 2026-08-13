@@ -34,13 +34,24 @@ export function initSupabaseRealtimeSync() {
         const { eventType, new: newRow, old: oldRow } = payload;
         const currentProducts = getStoredProducts();
 
+        const parseProductRow = (row: any): Product => ({
+          id: String(row.id),
+          sku: String(row.sku || row.id),
+          producto: String(row.producto),
+          precio: Number(row.precio),
+          costo: Number(row.costo || 0),
+          stock: Number(row.stock || 0),
+          imagen_url: String(row.imagen_url || '/logo.jpg'),
+          categoria: String(row.categoria || 'GENERAL'),
+        });
+
         if (eventType === 'INSERT' && newRow) {
-          const product: Product = newRow as Product;
+          const product = parseProductRow(newRow);
           if (!currentProducts.some(p => p.id === product.id)) {
             currentProducts.push(product);
           }
         } else if (eventType === 'UPDATE' && newRow) {
-          const updated: Product = newRow as Product;
+          const updated = parseProductRow(newRow);
           const idx = currentProducts.findIndex(p => p.id === updated.id);
           if (idx !== -1) {
             currentProducts[idx] = updated;
