@@ -34,7 +34,7 @@ export function initSupabaseRealtimeSync() {
         const { eventType, new: newRow, old: oldRow } = payload;
         const currentProducts = getStoredProducts();
 
-        const parseProductRow = (row: any): Product => ({
+        const parseProductRow = (row: Record<string, unknown>): Product => ({
           id: String(row.id),
           sku: String(row.sku || row.id),
           producto: String(row.producto),
