@@ -1,0 +1,241 @@
+@import "tailwindcss";
+
+/* ============================================================
+   RP Tech — sistema visual
+
+   Direccion: claro minimalista. Papel blanco, mucho aire, el
+   producto como protagonista.
+
+   La personalidad no vive en el color ni en formas decorativas:
+   vive en el DATO. Este negocio vende compatibilidad —el cliente
+   pregunta "¿este cable sirve para mi celular?"— y los dos peores
+   errores del sistema anterior fueron justamente etiquetas de
+   compatibilidad equivocadas. Por eso la especificacion tecnica
+   (240W, 12000 mAh, 7.2A, 10000 DPI) se trata como material
+   grafico de primera clase, en monoespaciada, visible desde la
+   tarjeta. Ese es el elemento firma.
+   ============================================================ */
+
+@theme {
+  /* --- Color -------------------------------------------------
+     Seis valores. El negro no es negro: lleva el matiz teal de
+     la marca, para que el blanco no se sienta clinico.        */
+  --color-ink: #0a1a21;        /* 17.8:1 sobre blanco */
+  --color-ink-soft: #43555c;   /*  7.8:1 */
+  --color-ink-muted: #657378;  /*  4.9:1 — el valor original (#7d8f96) daba
+                                  3.4:1 y no pasaba AA para texto normal */
+
+  --color-paper: #ffffff;
+  --color-paper-alt: #f6f8f8;
+  --color-hairline: #e4eaeb;
+
+  --color-brand: #023e55;      /* 11.5:1 */
+
+  /* El turquesa de marca da 2.95:1 sobre blanco: NO sirve como texto. Se usa
+     para filete, foco, subrayado activo y bordes, donde no aplica el umbral
+     de texto. Cuando el acento tiene que ser texto, se usa signal-ink. */
+  --color-signal: #2ba5b2;
+  --color-signal-ink: #1d7a84; /*  5.0:1 */
+
+  --color-action: #f7af02;
+  --color-action-hover: #e5a002;
+
+  --color-danger: #b42318;
+  --color-ok: #067647;
+
+  /* --- Tipografia --------------------------------------------
+     Una grotesca para todo (el enfoque Apple: una familia, muchos
+     tamanos opticos) mas una monoespaciada industrial que solo
+     aparece en datos: specs, SKU, codigos de pedido, precios en
+     tablas. La mono es la firma.                              */
+  --font-sans: var(--font-instrument), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
+
+  /* Escala tipografica. Salto grande entre display y cuerpo:
+     el aire y el contraste de tamano son la jerarquia.        */
+  --text-display: 4.5rem;
+  --text-display--line-height: 0.94;
+  --text-display--letter-spacing: -0.045em;
+  --text-display--font-weight: 500;
+
+  --text-title: 2.25rem;
+  --text-title--line-height: 1.05;
+  --text-title--letter-spacing: -0.03em;
+  --text-title--font-weight: 500;
+
+  --text-heading: 1.375rem;
+  --text-heading--line-height: 1.2;
+  --text-heading--letter-spacing: -0.02em;
+  --text-heading--font-weight: 500;
+
+  --text-spec: 0.75rem;
+  --text-spec--line-height: 1;
+  --text-spec--letter-spacing: 0.02em;
+
+  --text-eyebrow: 0.6875rem;
+  --text-eyebrow--line-height: 1;
+  --text-eyebrow--letter-spacing: 0.14em;
+
+  /* --- Movimiento --------------------------------------------
+     Una sola curva y tres duraciones. Nada rebota: este negocio
+     vende precision, no juguetes.                             */
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  --dur-fast: 160ms;
+  --dur-base: 280ms;
+  --dur-slow: 620ms;
+
+  --radius-card: 1rem;
+  --radius-chip: 0.375rem;
+}
+
+/* ============================================================
+   Base
+   ============================================================ */
+
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background-color: var(--color-paper);
+  color: var(--color-ink);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-synthesis-weight: none;
+}
+
+/* Foco visible y consistente en todo lo interactivo. Piso de
+   calidad, no decoracion: se navega con teclado o no se navega. */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-signal);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+::selection {
+  background: color-mix(in oklab, var(--color-signal) 22%, transparent);
+}
+
+/* ============================================================
+   Elemento firma — el chip de especificacion
+
+   Un dato tecnico tratado como objeto: monoespaciado, con un
+   filete a la izquierda que lo ancla. Aparece en la tarjeta, en
+   la ficha, en el hero. Es lo que se recuerda de esta tienda.
+   ============================================================ */
+
+.spec-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.375rem;
+  padding-left: 0.5rem;
+  border-left: 1px solid var(--color-hairline);
+  font-family: var(--font-mono);
+  font-size: var(--text-spec);
+  letter-spacing: var(--text-spec--letter-spacing);
+  color: var(--color-ink-soft);
+  white-space: nowrap;
+}
+
+.spec-chip__valor {
+  color: var(--color-ink);
+  font-weight: 500;
+}
+
+.spec-chip--fuerte {
+  border-left-color: var(--color-signal);
+}
+
+/* Etiqueta de seccion: mono, versalita, muy espaciada. */
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: var(--text-eyebrow);
+  letter-spacing: var(--text-eyebrow--letter-spacing);
+  text-transform: uppercase;
+  color: var(--color-ink-muted);
+}
+
+/* ============================================================
+   Movimiento
+
+   Dos gestos, uno de entrada y uno ambiente. Todo se apaga con
+   prefers-reduced-motion.
+   ============================================================ */
+
+@keyframes subir {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.animar-entrada {
+  animation: subir var(--dur-slow) var(--ease-out-soft) both;
+}
+
+/* Entrada al hacer scroll. El estado inicial vive aqui, no en JavaScript:
+   servidor y cliente renderizan lo mismo, y la preferencia de menos
+   movimiento se atiende antes de que corra una linea de JS. */
+[data-revelar] {
+  transition:
+    opacity var(--dur-slow) var(--ease-out-soft) var(--revelar-delay, 0ms),
+    transform var(--dur-slow) var(--ease-out-soft) var(--revelar-delay, 0ms);
+}
+
+[data-revelar="oculto"] {
+  opacity: 0;
+  transform: translateY(14px);
+}
+
+[data-revelar="visible"] {
+  opacity: 1;
+  transform: none;
+}
+
+/* Deriva del riel de especificaciones del hero. Recorre exactamente
+   la mitad del contenido, que esta duplicado, para que el bucle sea
+   invisible. */
+@keyframes derivar {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.riel-deriva {
+  animation: derivar 48s linear infinite;
+}
+
+.riel-deriva:hover,
+.riel-deriva:focus-within {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .riel-deriva {
+    animation: none;
+    transform: none;
+  }
+  /* Nada de contenido invisible esperando un scroll que ya no se anima. */
+  [data-revelar] {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
