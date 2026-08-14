@@ -1,0 +1,92 @@
+[
+  {
+    "id": "26003",
+    "sku": "26003",
+    "producto": "Audífonos Estéreo con Cable REDD",
+    "precio": 12,
+    "stock": 10,
+    "imagen_url": "/products/26002.jpg",
+    "categoria": "AUDIFONOS ESTANDAR"
+  },
+  {
+    "id": "26002",
+    "sku": "26002",
+    "producto": "Audífonos Inalámbricos Bluetooth Damix M20 TWS",
+    "precio": 15,
+    "stock": 10,
+    "imagen_url": "/products/26001.png",
+    "categoria": "AUDIFONOS ESTANDAR"
+  },
+  {
+    "id": "26010",
+    "sku": "26010",
+    "producto": "Batería Externa Power Bank Romax",
+    "precio": 70,
+    "stock": 2,
+    "imagen_url": "/products/26010.jpg",
+    "categoria": "CARGADOR PORTATIL"
+  },
+  {
+    "id": "26009",
+    "sku": "26009",
+    "producto": "Mouse Inalámbrico Bluetooth Halion",
+    "precio": 65,
+    "stock": 1,
+    "imagen_url": "/products/26009.jpg",
+    "categoria": "COMPUTO"
+  },
+  {
+    "id": "26011",
+    "sku": "26011",
+    "producto": "Extensión de corriente",
+    "precio": 30,
+    "stock": 0,
+    "imagen_url": "/products/26010.png",
+    "categoria": "MISELANEO"
+  },
+  {
+    "id": "26008",
+    "sku": "26008",
+    "producto": "Soporte para Celular Romax",
+    "precio": 15,
+    "stock": 5,
+    "imagen_url": "/products/26008.jpg",
+    "categoria": "MISELANEO"
+  },
+  {
+    "id": "26007",
+    "sku": "26007",
+    "producto": "Kit Cargador de Pared REDD + Cable Tipo C",
+    "precio": 17,
+    "stock": 6,
+    "imagen_url": "/products/26006.jpg",
+    "categoria": "CARGADOR SOBREMESA"
+  },
+  {
+    "id": "26006",
+    "sku": "26006",
+    "producto": "Cable USB a Tipo C Romax",
+    "precio": 12,
+    "stock": 5,
+    "imagen_url": "/products/26005.jpg",
+    "categoria": "CABLE CARGADOR"
+  },
+  {
+    "id": "26005",
+    "sku": "26005",
+    "producto": "Cable Tipo C Carga Rápida REDD 7.2A",
+    "precio": 12,
+    "stock": 12,
+    "imagen_url": "/products/26004.jpg",
+    "categoria": "CABLE CARGADOR"
+  },
+  {
+    "id": "26004",
+    "sku": "26004",
+    "producto": "Cable de Carga y Datos Lightning para iPhone",
+    "precio": 15,
+    "stock": 6,
+    "imagen_url": "/products/26003.jpg",
+    "categoria": "CABLE CARGADOR"
+  }
+]
