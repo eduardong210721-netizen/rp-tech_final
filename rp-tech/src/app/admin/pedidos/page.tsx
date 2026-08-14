@@ -186,8 +186,8 @@ export default async function PedidosPage({
                   items={lineas}
                   fecha={fechaLima(pedido.created_at)}
                   monto={monto}
-                  whatsapp={whatsappCliente(pedido, monto)}
-                  mensajeWhatsapp={mensajeParaCliente(pedido, monto)}
+                  whatsapp={whatsappCliente(pedido, monto, lineas, formatPEN)}
+                  mensajeWhatsapp={mensajeParaCliente(pedido, monto, lineas, formatPEN)}
                   textoEntrega={textoEntrega(pedido)}
                 />
               )
