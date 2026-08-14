@@ -17,6 +17,11 @@ export const NEGOCIO = {
   nombre: "RP Tech",
   descripcion: "Accesorios de tecnología en Lima",
   ciudad: "Lima, Perú",
+  /**
+   * Punto de recojo. Es la alternativa al envío: el cliente puede venir aquí
+   * o pedir entrega a su distrito, y el costo se acuerda por WhatsApp.
+   */
+  puntoRecojo: "AA.HH. Daniel Hipólito Mz. C Lt. 7" as string | null,
   /** Pendiente de confirmar con el dueño */
   direccion: null as string | null,
   horario: null as string | null,

@@ -8,6 +8,8 @@
  * la tarjeta (cliente): no debe arrastrar nada de `server-only`.
  */
 
+import { NEGOCIO, METODOS_PAGO } from '@/lib/negocio'
+
 /** Ciclo de vida de un pedido, en orden. */
 export const ESTADOS = ['pendiente', 'confirmado', 'entregado', 'cancelado'] as const
 
@@ -226,28 +228,137 @@ function primerNombre(nombre: string): string {
 
 type Contactable = Pick<
   OrderRow,
-  'codigo' | 'cliente_nombre' | 'cliente_telefono' | 'distrito' | 'referencia' | 'subtotal'
+  | 'codigo'
+  | 'cliente_nombre'
+  | 'cliente_telefono'
+  | 'distrito'
+  | 'referencia'
+  | 'subtotal'
+  // El estado decide qué se le pregunta al cliente: un pedido pendiente
+  // necesita cerrar pago y entrega, uno confirmado solo la entrega.
+  | 'estado'
 >
 
 /**
- * Mensaje ya redactado para el cliente. Menciona el código: es lo que evita
- * buscar a mano en qué conversación quedó cada pedido.
+ * Cómo entregamos: recojo en el punto o envío al distrito que dejó el cliente.
  *
- * Mismo criterio que `whatsappLink()` de @/lib/negocio, pero al número DEL
- * CLIENTE. El monto va con el mismo formato que ve el cliente en la tienda.
+ * Se ofrecen las dos, y el distrito se nombra porque el cliente ya lo escribió
+ * en el checkout: repetírselo demuestra que el pedido se leyó. El costo del
+ * envío NO se promete, porque depende del distrito y no lo sabemos aquí.
  */
-export function mensajeParaCliente(pedido: Contactable, montoFormateado: string): string {
+function lineaEntrega(distrito: string): string {
+  const punto = NEGOCIO.puntoRecojo
+  if (!punto) {
+    return `Para la entrega, ¿te queda bien en ${distrito}? Coordinamos el punto y la hora.`
+  }
   return (
-    `Hola ${primerNombre(pedido.cliente_nombre)}, te escribo de RP Tech por tu pedido ` +
-    `${pedido.codigo} por ${montoFormateado}. ¿Coordinamos el pago y la entrega?`
+    `Sobre la entrega: puedes recogerlo en ${punto}, ` +
+    `o te lo llevamos a ${distrito} y coordinamos el costo del envío.`
+  )
+}
+
+/**
+ * Una línea por producto, con el precio entre paréntesis.
+ *
+ * Los paréntesis no son un adorno: los nombres del catálogo ya traen rayas
+ * ("Cable Apple USB-C a USB-C 240W — 2 m"), así que separar el precio con
+ * otra raya lo dejaba pegado al nombre y se leía como parte del producto.
+ *
+ * La cantidad solo aparece cuando es mayor que uno, y entonces se muestra la
+ * multiplicación completa: "S/ 12.00" a secas junto a dos unidades se lee
+ * como precio unitario y el cliente cree que le cobran el doble.
+ */
+function detalleItems(items: ItemMensaje[], formatearMonto: (n: number) => string): string {
+  return items
+    .map((i) => {
+      const total = formatearMonto(i.precio_unitario * i.cantidad)
+      const precio =
+        i.cantidad > 1 ? `${i.cantidad} × ${formatearMonto(i.precio_unitario)} = ${total}` : total
+      return `• ${i.nombre} (${precio})`
+    })
+    .join('\n')
+}
+
+/** "Yape, Plin, Transferencia o Efectivo" — una lista que se lee en voz alta. */
+function listaLegible(valores: readonly string[]): string {
+  if (valores.length <= 1) return valores[0] ?? ''
+  return `${valores.slice(0, -1).join(', ')} o ${valores[valores.length - 1]}`
+}
+
+export type ItemMensaje = { nombre: string; cantidad: number; precio_unitario: number }
+
+/**
+ * Mensaje ya redactado para el cliente, listo para enviar sin editar.
+ *
+ * Tres decisiones sobre el texto:
+ *
+ * 1. **Cambia según el estado.** Preguntarle "¿cómo vas a pagar?" a alguien
+ *    cuyo pedido ya confirmaste suena a que no llevas la cuenta de tus
+ *    propias ventas. Un pedido pendiente necesita cerrar pago y entrega; uno
+ *    confirmado solo necesita coordinar la entrega.
+ *
+ * 2. **Trata de tú, sin mezclar.** El borrador original decía "te escribo" y
+ *    tres palabras después "realizará". Elegir uno y sostenerlo es lo que
+ *    hace que un mensaje suene a persona y no a plantilla.
+ *
+ * 3. **Repite lo que pidió.** Entre que el cliente hace el pedido y el dueño
+ *    escribe pueden pasar horas o días. Listar los productos le ahorra tener
+ *    que subir en el chat a recordar qué compró.
+ *
+ * Siempre lleva el código: es lo que evita buscar a mano en qué conversación
+ * quedó cada pedido.
+ */
+export function mensajeParaCliente(
+  pedido: Contactable,
+  montoFormateado: string,
+  items: ItemMensaje[] = [],
+  formatearMonto: (n: number) => string = () => '',
+): string {
+  const nombre = primerNombre(pedido.cliente_nombre)
+  const detalle = items.length > 0 ? `\n\n${detalleItems(items, formatearMonto)}` : ''
+
+  if (pedido.estado === 'cancelado') {
+    return (
+      `Hola ${nombre}, te escribo de RP Tech por tu pedido ${pedido.codigo}. ` +
+      `Quedó cancelado. Si sigues interesado, escríbeme y lo vemos.`
+    )
+  }
+
+  if (pedido.estado === 'entregado') {
+    return (
+      `Hola ${nombre}, te escribo de RP Tech por tu pedido ${pedido.codigo}. ` +
+      `¿Todo bien con lo que recibiste?`
+    )
+  }
+
+  if (pedido.estado === 'confirmado') {
+    return (
+      `Hola ${nombre}, tu pedido ${pedido.codigo} de RP Tech ya está confirmado ` +
+      `y separado para ti.${detalle}\n\nTotal: ${montoFormateado}\n\n` +
+      lineaEntrega(pedido.distrito)
+    )
+  }
+
+  // Pendiente: falta cerrar pago y entrega. Es el caso normal.
+  return (
+    `Hola ${nombre}, te escribo de RP Tech por tu pedido ${pedido.codigo}.${detalle}` +
+    `\n\nTotal: ${montoFormateado}\n\n` +
+    `¿Cómo prefieres pagar? Aceptamos ${listaLegible(METODOS_PAGO)}.\n\n` +
+    lineaEntrega(pedido.distrito)
   )
 }
 
 /** Enlace de WhatsApp al cliente, o `null` si el número no sirve para wa.me. */
-export function whatsappCliente(pedido: Contactable, montoFormateado: string): string | null {
+export function whatsappCliente(
+  pedido: Contactable,
+  montoFormateado: string,
+  items: ItemMensaje[] = [],
+  formatearMonto: (n: number) => string = () => '',
+): string | null {
   const numero = telefonoInternacional(pedido.cliente_telefono)
   if (!numero) return null
-  return `https://wa.me/${numero}?text=${encodeURIComponent(mensajeParaCliente(pedido, montoFormateado))}`
+  const texto = mensajeParaCliente(pedido, montoFormateado, items, formatearMonto)
+  return `https://wa.me/${numero}?text=${encodeURIComponent(texto)}`
 }
 
 /**

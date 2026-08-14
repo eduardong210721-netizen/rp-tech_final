@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { NEGOCIO } from '@/lib/negocio'
 import {
   coincidePedido,
   contarPorEstado,
@@ -154,12 +155,64 @@ describe('telefonoLegible', () => {
 })
 
 describe('mensajeParaCliente / whatsappCliente', () => {
+  const soles = (n: number) => `S/ ${n.toFixed(2)}`
+  const lineas = [
+    { nombre: 'Cable Apple USB-C a USB-C 240W', cantidad: 1, precio_unitario: 60 },
+    { nombre: 'Audífonos ROMAX RM-S1', cantidad: 2, precio_unitario: 12.5 },
+  ]
+
   it('el mensaje nombra al cliente, el código y el monto', () => {
     const texto = mensajeParaCliente(pedido(), 'S/ 85.00')
     expect(texto).toContain('María')
     expect(texto).not.toContain('María Pérez')
     expect(texto).toContain('RP-2026-0007')
     expect(texto).toContain('S/ 85.00')
+  })
+
+  it('con una sola unidad muestra el precio y ya', () => {
+    const texto = mensajeParaCliente(pedido(), 'S/ 85.00', lineas, soles)
+    expect(texto).toContain('• Cable Apple USB-C a USB-C 240W (S/ 60.00)')
+  })
+
+  it('con varias unidades muestra la multiplicación completa', () => {
+    // "S/ 25.00" a secas junto a dos unidades se lee como precio unitario y
+    // el cliente cree que le están cobrando el doble.
+    const texto = mensajeParaCliente(pedido(), 'S/ 85.00', lineas, soles)
+    expect(texto).toContain('• Audífonos ROMAX RM-S1 (2 × S/ 12.50 = S/ 25.00)')
+  })
+
+  it('un pedido pendiente pregunta por el pago; uno confirmado ya no', () => {
+    const pendiente = mensajeParaCliente(pedido(), 'S/ 85.00', lineas, soles)
+    expect(pendiente).toContain('Yape')
+
+    const confirmado = mensajeParaCliente(
+      pedido({ estado: 'confirmado' }),
+      'S/ 85.00',
+      lineas,
+      soles,
+    )
+    // Preguntar "¿cómo vas a pagar?" en un pedido ya confirmado y separado
+    // hace ver que el dueño no lleva el control de sus propias ventas.
+    expect(confirmado).not.toContain('Yape')
+    expect(confirmado).toContain('confirmado')
+  })
+
+  it('ofrece las dos entregas: el punto de recojo y el distrito del cliente', () => {
+    const texto = mensajeParaCliente(pedido(), 'S/ 85.00', lineas, soles)
+    expect(texto).toContain(NEGOCIO.puntoRecojo as string)
+    expect(texto).toContain('San Miguel')
+  })
+
+  it('un pedido entregado no vuelve a pedir datos: pregunta cómo le fue', () => {
+    const texto = mensajeParaCliente(pedido({ estado: 'entregado' }), 'S/ 85.00')
+    expect(texto).not.toContain('Yape')
+    expect(texto).not.toContain(NEGOCIO.puntoRecojo as string)
+  })
+
+  it('un pedido cancelado deja la puerta abierta sin cobrar nada', () => {
+    const texto = mensajeParaCliente(pedido({ estado: 'cancelado' }), 'S/ 85.00')
+    expect(texto).not.toContain('Yape')
+    expect(texto).toContain('RP-2026-0007')
   })
 
   it('el enlace apunta al número DEL CLIENTE y lleva el mensaje codificado', () => {
